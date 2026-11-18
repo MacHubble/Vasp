@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>VASP Camonica Tracker</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0a0d14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -558,6 +562,7 @@
         <div style="background:#0f172a; padding:10px; border-radius:8px; font-size:0.8rem; margin-bottom:8px;">
           <div>Comuni censiti: <strong>Angolo, Artogne, Darfo, Esine, Gianico, Pian Camuno</strong></div>
           <div>Tracciati attivi: <strong id="lbl-total-features">139</strong></div>
+          <div style="margin-top:4px;">Modalità Offline: <strong id="offline-status-badge" style="color:#f59e0b;">In preparazione...</strong></div>
         </div>
         <button class="btn-block" id="btn-reset-db"><i class="fa-solid fa-rotate-left"></i> Ripristina Dati Predefiniti</button>
       </div>
@@ -590,6 +595,23 @@
     let userMarker = null;
     let accuracyCircle = null;
     let vaspLayerGroup = null;
+
+
+    // REGISTRAZIONE SERVICE WORKER PER FUNZIONAMENTO 100% OFFLINE
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => {
+            console.log('Service Worker offline registrato:', reg.scope);
+            const offlineBadge = document.getElementById('offline-status-badge');
+            if (offlineBadge) {
+              offlineBadge.innerHTML = '<i class="fa-solid fa-check-circle"></i> OFFLINE PRONTO';
+              offlineBadge.style.color = '#10b981';
+            }
+          })
+          .catch((err) => console.error('Errore Service Worker:', err));
+      });
+    }
 
     // INIZIALIZZAZIONE
     window.addEventListener('DOMContentLoaded', () => {
