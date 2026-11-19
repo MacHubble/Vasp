@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vasp-camonica-offline-v1';
+const CACHE_NAME = 'vasp-camonica-offline-v2';
 
 // Risorse fondamentali da salvare in cache permanente al primo avvio
 const PRECACHE_URLS = [
@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // Per le tessere della mappa (OpenStreetMap): prova rete, poi cache se offline
-  if (url.hostname.includes('tile.openstreetmap.org')) {
+  if (url.hostname.includes('tile.openstreetmap.org') || url.hostname.includes('cartografia.servizirl.it') || url.hostname.includes('opentopomap.org') || url.hostname.includes('arcgisonline.com')) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
