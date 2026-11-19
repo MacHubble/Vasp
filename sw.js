@@ -1,6 +1,6 @@
-const CACHE_NAME = 'vasp-camonica-offline-v2';
+const CACHE_NAME = 'vasp-camonica-offline-v3';
 
-// Risorse fondamentali da salvare in cache permanente al primo avvio
+// Risorse fondamentali dell'app da salvare in cache permanente al primo avvio
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -11,7 +11,6 @@ const PRECACHE_URLS = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
-// Installazione: scarica e memorizza tutti i file
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -29,7 +28,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Attivazione: pulisce eventuali vecchie cache
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -44,23 +42,20 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Intercettazione richieste: Cache First per app/librerie, Network con fallback cache per mappe
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Per le tessere della mappa (OpenStreetMap): prova rete, poi cache se offline
-  if (url.hostname.includes('tile.openstreetmap.org') || url.hostname.includes('cartografia.servizirl.it') || url.hostname.includes('opentopomap.org') || url.hostname.includes('arcgisonline.com')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-          return networkResponse;
-        })
-        .catch(() => caches.match(event.request))
-    );
+  // NON intercettare le tessere delle mappe esterne: lascia che il browser le scarichi nativamente senza blocchi CORS/Referer
+  if (
+    url.hostname.includes('openstreetmap.org') ||
+    url.hostname.includes('opentopomap.org') ||
+    url.hostname.includes('arcgisonline.com') ||
+    url.hostname.includes('cartocdn.com') ||
+    url.hostname.includes('servizirl.it') ||
+    url.hostname.includes('minambiente.it')
+  ) {
     return;
   }
 
@@ -68,7 +63,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       if (cachedResponse) {
-        // Aggiorna in background se online
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
@@ -84,7 +78,6 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       }).catch(() => {
-        // Fallback alla pagina principale se si naviga offline
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }

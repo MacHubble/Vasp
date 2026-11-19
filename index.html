@@ -439,17 +439,25 @@
       font-size: 1.2rem;
     }
 
-    /* STILE CONTROLLO LAYER MAPPA */
+    /* STILE CONTROLLO LAYER MAPPA (ICONA COMPATTA SU MOBILE) */
     .leaflet-control-layers {
-      background: rgba(17, 23, 38, 0.92) !important;
+      background: rgba(17, 23, 38, 0.94) !important;
       backdrop-filter: blur(8px);
       color: #f8fafc !important;
       border: 1px solid #334155 !important;
       border-radius: 12px !important;
-      padding: 8px 12px !important;
       font-family: 'Inter', sans-serif !important;
       font-size: 0.85rem !important;
       box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+    }
+    .leaflet-control-layers-expanded {
+      padding: 10px 14px !important;
+    }
+    .leaflet-control-layers-toggle {
+      width: 44px !important;
+      height: 44px !important;
+      background-size: 24px 24px !important;
+      filter: invert(1);
     }
     .leaflet-control-layers-separator {
       border-top: 1px solid #334155 !important;
@@ -731,31 +739,46 @@
       });
     }
 
-    // INIZIALIZZAZIONE MAPPA CON SELETTORE SFONDI (INCLUSA CTR LOMBARDIA)
+    // INIZIALIZZAZIONE MAPPA CON SELETTORE SFONDI E CTR LOMBARDIA
     function initMap() {
-      // Sfondo 1: OpenStreetMap
-      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // Sfondo 1: Stradale (Carto Voyager - veloce e senza blocchi su mobile/PWA)
+      const stradaleLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: 'CartoDB / OSM'
+      });
+
+      // Sfondo 2: OpenStreetMap Classico
+      const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: 'OSM'
       });
 
-      // Sfondo 2: CTR Regione Lombardia (Carta Tecnica Regionale 1:10.000 WMS)
+      // Sfondo 3: CTR Regione Lombardia (Carta Tecnica Regionale 1:10.000 via ArcGIS WMS 1.1.1 EPSG:3857)
+      // Nota: usare zoom >= 13 per visualizzare i dettagli tecnici 1:10.000
       const ctrLombardiaLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/CTR_Lombardia/MapServer/WMSServer', {
-        layers: '0,1,2,3,4,5,6,7,8,9,10,11',
+        layers: '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15',
         format: 'image/png',
-        transparent: false,
+        transparent: true,
         version: '1.1.1',
+        uppercase: true,
         maxZoom: 19,
         attribution: 'CTR Regione Lombardia'
       });
 
-      // Sfondo 3: Topografica / Curve di livello (OpenTopoMap)
-      const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      // Sfondo 4: Topografica Tecnica (Esri World Topo - curve di livello, sentieri, boschi e idrografia)
+      const esriTopoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Esri Topo'
+      });
+
+      // Sfondo 5: Topografica IGM-Style (OpenTopoMap con isoipse)
+      const openTopoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
         maxZoom: 17,
         attribution: 'OpenTopoMap'
       });
 
-      // Sfondo 4: Ortofoto Satellite (Esri World Imagery)
+      // Sfondo 6: Ortofoto Satellite (Esri World Imagery)
       const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: 'Esri Satellite'
@@ -765,16 +788,18 @@
       map = L.map('map', {
         zoomControl: false,
         attributionControl: false,
-        layers: [osmLayer]
-      }).setView([45.88, 10.18], 12);
+        layers: [stradaleLayer]
+      }).setView([45.88, 10.18], 13);
 
       vaspLayerGroup = L.layerGroup().addTo(map);
 
-      // Controllo selezione sfondi in alto a destra sulla mappa
+      // Controllo selezione sfondi (icona compatta cliccabile in alto a destra)
       const baseMaps = {
-        "Stradale (OSM)": osmLayer,
+        "Stradale (Veloce)": stradaleLayer,
+        "OpenStreetMap": osmLayer,
         "CTR Lombardia (1:10.000)": ctrLombardiaLayer,
-        "Topografica (Curve Livello)": topoLayer,
+        "Carta Tecnica / Curve (Esri)": esriTopoLayer,
+        "Topografica Isoipse (OTM)": openTopoLayer,
         "Ortofoto Satellite": satLayer
       };
 
@@ -782,7 +807,7 @@
         "Tracciati VASP (139)": vaspLayerGroup
       };
 
-      L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: false }).addTo(map);
+      L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
 
       renderVaspOnMap();
     }
