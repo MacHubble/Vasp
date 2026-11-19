@@ -439,25 +439,28 @@
       font-size: 1.2rem;
     }
 
-    /* STILE CONTROLLO LAYER MAPPA (ICONA COMPATTA SU MOBILE) */
+    /* STILE CONTROLLO LAYER MAPPA (PULSANTE COMPACTO A SCOMPARSA) */
     .leaflet-control-layers {
-      background: rgba(17, 23, 38, 0.94) !important;
-      backdrop-filter: blur(8px);
+      background: #111726 !important;
       color: #f8fafc !important;
-      border: 1px solid #334155 !important;
+      border: 2px solid #38bdf8 !important;
       border-radius: 12px !important;
       font-family: 'Inter', sans-serif !important;
       font-size: 0.85rem !important;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.6) !important;
+    }
+    .leaflet-control-layers:not(.leaflet-control-layers-expanded) .leaflet-control-layers-list {
+      display: none !important;
     }
     .leaflet-control-layers-expanded {
-      padding: 10px 14px !important;
+      padding: 12px 16px !important;
     }
     .leaflet-control-layers-toggle {
       width: 44px !important;
       height: 44px !important;
       background-size: 24px 24px !important;
       filter: invert(1);
+      display: block !important;
     }
     .leaflet-control-layers-separator {
       border-top: 1px solid #334155 !important;
@@ -739,13 +742,13 @@
       });
     }
 
-    // INIZIALIZZAZIONE MAPPA CON SELETTORE SFONDI E CTR LOMBARDIA
+    // INIZIALIZZAZIONE MAPPA CON SELETTORE SFONDI A SCOMPARSA E CTR DBT LOMBARDIA
     function initMap() {
-      // Sfondo 1: Stradale (Carto Voyager - veloce e senza blocchi su mobile/PWA)
+      // Sfondo 1: Stradale (Carto Voyager - veloce e leggero)
       const stradaleLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',
         maxZoom: 19,
-        attribution: 'CartoDB / OSM'
+        attribution: 'CartoDB'
       });
 
       // Sfondo 2: OpenStreetMap Classico
@@ -754,28 +757,30 @@
         attribution: 'OSM'
       });
 
-      // Sfondo 3: CTR Regione Lombardia (Carta Tecnica Regionale 1:10.000 via ArcGIS WMS 1.1.1 EPSG:3857)
-      // Nota: usare zoom >= 13 per visualizzare i dettagli tecnici 1:10.000
-      const ctrLombardiaLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/CTR_Lombardia/MapServer/WMSServer', {
-        layers: '0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15',
+      // Sfondo 3: CTR Lombardia (Carta Tecnica Regionale dal DBT - endpoint ufficiale CTR_DBT)
+      const ctrLombardiaLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/CTR_DBT/MapServer/WMSServer', {
+        layers: '0',
         format: 'image/png',
         transparent: true,
         version: '1.1.1',
-        uppercase: true,
         maxZoom: 19,
-        attribution: 'CTR Regione Lombardia'
+        attribution: 'CTR DBT Regione Lombardia'
       });
 
-      // Sfondo 4: Topografica Tecnica (Esri World Topo - curve di livello, sentieri, boschi e idrografia)
+      // Sfondo 4: CTR Storica Raster 1:10.000 Regione Lombardia
+      const ctrRasterLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis/services/wms/ctr_wms/MapServer/WMSServer', {
+        layers: '0',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        maxZoom: 19,
+        attribution: 'CTR Raster Lombardia'
+      });
+
+      // Sfondo 5: Topografica Tecnica (Esri World Topo - curve di livello, sentieri e toponimi montani)
       const esriTopoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: 'Esri Topo'
-      });
-
-      // Sfondo 5: Topografica IGM-Style (OpenTopoMap con isoipse)
-      const openTopoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        maxZoom: 17,
-        attribution: 'OpenTopoMap'
       });
 
       // Sfondo 6: Ortofoto Satellite (Esri World Imagery)
@@ -793,13 +798,13 @@
 
       vaspLayerGroup = L.layerGroup().addTo(map);
 
-      // Controllo selezione sfondi (icona compatta cliccabile in alto a destra)
+      // Controllo selezione sfondi: forza chiusura su mobile e richiude al click
       const baseMaps = {
-        "Stradale (Veloce)": stradaleLayer,
+        "Stradale": stradaleLayer,
         "OpenStreetMap": osmLayer,
-        "CTR Lombardia (1:10.000)": ctrLombardiaLayer,
-        "Carta Tecnica / Curve (Esri)": esriTopoLayer,
-        "Topografica Isoipse (OTM)": openTopoLayer,
+        "CTR Lombardia (DBT 1:10.000)": ctrLombardiaLayer,
+        "CTR Lombardia (Storica)": ctrRasterLayer,
+        "Topografica (Curve Livello)": esriTopoLayer,
         "Ortofoto Satellite": satLayer
       };
 
@@ -807,7 +812,15 @@
         "Tracciati VASP (139)": vaspLayerGroup
       };
 
-      L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
+      const layerControl = L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
+
+      // Chiude automaticamente il menu sfondi su smartphone dopo la scelta o toccando la mappa
+      map.on('baselayerchange click', () => {
+        const container = layerControl.getContainer();
+        if (container) {
+          container.classList.remove('leaflet-control-layers-expanded');
+        }
+      });
 
       renderVaspOnMap();
     }
