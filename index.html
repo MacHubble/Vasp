@@ -470,6 +470,35 @@
       margin-bottom: 4px;
       cursor: pointer;
     }
+
+    /* PULSANTE CENTRA POSIZIONE IN BASSO A DESTRA SULLA MAPPA */
+    .btn-locate-fab {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      z-index: 1000;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #111726;
+      color: #94a3b8;
+      border: 2px solid #334155;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-locate-fab.following {
+      background: var(--accent-blue);
+      color: #042f2e;
+      border-color: #ffffff;
+    }
+    .btn-locate-fab:active {
+      transform: scale(0.92);
+    }
   </style>
 </head>
 <body>
@@ -558,6 +587,9 @@
     <!-- MAPPA VIEW -->
     <div id="map-view">
       <div id="map"></div>
+      <button class="btn-locate-fab following" id="btn-center-gps" title="Centra e segui posizione GPS">
+        <i class="fa-solid fa-location-crosshairs"></i>
+      </button>
     </div>
   </main>
 
@@ -627,6 +659,7 @@
     let userMarker = null;
     let accuracyCircle = null;
     let vaspLayerGroup = null;
+    let autoFollowGps = true;
 
 
     // REGISTRAZIONE SERVICE WORKER PER FUNZIONAMENTO 100% OFFLINE
@@ -692,7 +725,12 @@
         dashboardView.style.display = 'none';
         mapView.style.display = 'block';
         if (map) {
-          setTimeout(() => { map.invalidateSize(); }, 200);
+          setTimeout(() => {
+            map.invalidateSize();
+            if (autoFollowGps && currentPosition) {
+              map.setView([currentPosition.lat, currentPosition.lng], Math.max(map.getZoom(), 15));
+            }
+          }, 200);
         }
       });
 
@@ -742,22 +780,9 @@
       });
     }
 
-    // INIZIALIZZAZIONE MAPPA CON SELETTORE SFONDI A SCOMPARSA E CTR DBT LOMBARDIA
+    // INIZIALIZZAZIONE MAPPA CON I 3 SFONDI ESSENZIALI E AUTO-FOLLOW GPS
     function initMap() {
-      // Sfondo 1: Stradale (Carto Voyager - veloce e leggero)
-      const stradaleLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-        attribution: 'CartoDB'
-      });
-
-      // Sfondo 2: OpenStreetMap Classico
-      const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: 'OSM'
-      });
-
-      // Sfondo 3: CTR Lombardia (Carta Tecnica Regionale dal DBT - endpoint ufficiale CTR_DBT)
+      // Sfondo 1: CTR Lombardia (Carta Tecnica Regionale dal DBT - endpoint ufficiale)
       const ctrLombardiaLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/CTR_DBT/MapServer/WMSServer', {
         layers: '0',
         format: 'image/png',
@@ -767,43 +792,30 @@
         attribution: 'CTR DBT Regione Lombardia'
       });
 
-      // Sfondo 4: CTR Storica Raster 1:10.000 Regione Lombardia
-      const ctrRasterLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis/services/wms/ctr_wms/MapServer/WMSServer', {
-        layers: '0',
-        format: 'image/png',
-        transparent: true,
-        version: '1.1.1',
-        maxZoom: 19,
-        attribution: 'CTR Raster Lombardia'
-      });
-
-      // Sfondo 5: Topografica Tecnica (Esri World Topo - curve di livello, sentieri e toponimi montani)
+      // Sfondo 2: Topografica Tecnica (Esri World Topo - curve di livello, sentieri e toponimi montani)
       const esriTopoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: 'Esri Topo'
       });
 
-      // Sfondo 6: Ortofoto Satellite (Esri World Imagery)
+      // Sfondo 3: Ortofoto Satellite (Esri World Imagery)
       const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: 'Esri Satellite'
       });
 
-      // Centro sui 6 comuni della Valle Camonica (Darfo / Pian Camuno)
+      // Centro sui 6 comuni della Valle Camonica (Darfo / Pian Camuno) con CTR attiva
       map = L.map('map', {
         zoomControl: false,
         attributionControl: false,
-        layers: [stradaleLayer]
-      }).setView([45.88, 10.18], 13);
+        layers: [ctrLombardiaLayer]
+      }).setView([45.88, 10.18], 14);
 
       vaspLayerGroup = L.layerGroup().addTo(map);
 
-      // Controllo selezione sfondi: forza chiusura su mobile e richiude al click
+      // Controllo selezione sfondi (3 sfondi essenziali)
       const baseMaps = {
-        "Stradale": stradaleLayer,
-        "OpenStreetMap": osmLayer,
         "CTR Lombardia (DBT 1:10.000)": ctrLombardiaLayer,
-        "CTR Lombardia (Storica)": ctrRasterLayer,
         "Topografica (Curve Livello)": esriTopoLayer,
         "Ortofoto Satellite": satLayer
       };
@@ -822,7 +834,30 @@
         }
       });
 
+      // Se l'utente sposta la mappa manualmente con il dito, disattiva temporaneamente l'auto-follow
+      map.on('dragstart', () => {
+        setAutoFollow(false);
+      });
+
+      // Pulsante in basso a destra per centrare sulla posizione attuale e riattivare il follow
+      const btnCenter = document.getElementById('btn-center-gps');
+      btnCenter.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setAutoFollow(true);
+        if (currentPosition) {
+          map.setView([currentPosition.lat, currentPosition.lng], Math.max(map.getZoom(), 15), { animate: true });
+        }
+      });
+
       renderVaspOnMap();
+    }
+
+    function setAutoFollow(enabled) {
+      autoFollowGps = enabled;
+      const btnCenter = document.getElementById('btn-center-gps');
+      if (btnCenter) {
+        btnCenter.classList.toggle('following', enabled);
+      }
     }
 
     function renderVaspOnMap() {
@@ -905,6 +940,10 @@
         userMarker.setLatLng([lat, lng]);
         accuracyCircle.setLatLng([lat, lng]);
         accuracyCircle.setRadius(accuracy);
+      }
+
+      if (autoFollowGps) {
+        map.panTo([lat, lng], { animate: true });
       }
     }
 
@@ -1032,6 +1071,8 @@
 
     // SIMULATORE PER TEST CASALINGHI
     function simulatePosition(lng, lat) {
+      currentPosition = { lat, lng, speed: 25, alt: 680, accuracy: 5 };
+      setAutoFollow(true);
       updateStatus("SIMULAZIONE POSIZIONE ATTIVA", "connected");
       processLocation(lat, lng, 25, 680, 5);
       if (map) {
