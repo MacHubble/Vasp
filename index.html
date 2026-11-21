@@ -510,7 +510,7 @@
       <div>
         <div class="brand-title">VASP TRACKER</div>
       </div>
-      <span class="brand-badge" id="roads-count-badge">139 VASP</span>
+      
     </div>
     <div class="header-actions">
       <button class="btn-icon" id="btn-audio" title="Sintesi Vocale"><i class="fa-solid fa-volume-high"></i></button>
@@ -722,8 +722,10 @@
 
     function updateRoadsCounter() {
       const count = activeDataset.features ? activeDataset.features.length : 0;
-      document.getElementById('roads-count-badge').innerText = count + ' VASP';
-      document.getElementById('lbl-total-features').innerText = count;
+      const badge = document.getElementById('roads-count-badge');
+      if (badge) badge.innerText = count + ' VASP';
+      const lblTotal = document.getElementById('lbl-total-features');
+      if (lblTotal) lblTotal.innerText = count;
     }
 
     function initUI() {
@@ -1062,12 +1064,36 @@
 
       const layerControl = L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
 
-      // Chiude automaticamente il menu livelli su smartphone dopo la scelta o toccando la mappa
-      map.on('baselayerchange overlayadd overlayremove click', () => {
-        const container = layerControl.getContainer();
-        if (container) {
-          container.classList.remove('leaflet-control-layers-expanded');
+      // Permette di aprire E chiudere il menu livelli cliccando direttamente sul simbolo del menu
+      const lcContainer = layerControl.getContainer();
+      if (lcContainer) {
+        const toggleBtn = lcContainer.querySelector('.leaflet-control-layers-toggle');
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (lcContainer.classList.contains('leaflet-control-layers-expanded')) {
+              layerControl.collapse();
+            } else {
+              layerControl.expand();
+            }
+          });
         }
+      }
+
+      // Chiude il menu livelli dopo la scelta o toccando la mappa, e mostra tutti i vincoli presenti nel punto cliccato
+      map.on('baselayerchange overlayadd overlayremove', () => {
+        if (lcContainer) {
+          layerControl.collapse();
+        }
+      });
+
+      map.on('click', (e) => {
+        if (lcContainer && lcContainer.classList.contains('leaflet-control-layers-expanded')) {
+          layerControl.collapse();
+          return;
+        }
+        inspectConstraintsAtPoint(e.latlng);
       });
 
       // Se l'utente sposta la mappa manualmente con il dito, disattiva temporaneamente l'auto-follow
@@ -1149,6 +1175,197 @@
           `);
         }
       }).addTo(capanniLayerGroup);
+    }
+
+    
+    // INTERROGAZIONE PUNTUALE DI TUTTI I VINCOLI PRESENTI NEL PUNTO CLICCATO SULLA MAPPA
+    function inspectConstraintsAtPoint(latlng) {
+      if (!map) return;
+      const pt = turf.point([latlng.lng, latlng.lat]);
+      // Tolleranza in metri proporzionale allo zoom per elementi lineari (es. fiumi/torrenti, vincolo difficile cartografazione, VASP)
+      const zoom = map.getZoom();
+      const lineTolMeters = zoom >= 16 ? 18 : (zoom >= 14 ? 30 : 50);
+
+      const foundItems = [];
+
+      // Funzione helper per verificare intersezione poligonale o prossimità lineare
+      function checkDataset(dataset, badgeLabel, badgeBg, badgeColor, titleFn, detailFn, isLinear = false) {
+        if (!dataset || !dataset.features) return;
+        for (const feat of dataset.features) {
+          if (!feat.geometry) continue;
+          const gType = feat.geometry.type;
+          let matched = false;
+          let distMeters = null;
+
+          try {
+            if (gType === 'Polygon' || gType === 'MultiPolygon') {
+              if (turf.booleanPointInPolygon(pt, feat)) {
+                matched = true;
+              }
+            } else if (gType === 'LineString' || gType === 'MultiLineString') {
+              const snapped = turf.nearestPointOnLine(feat, pt);
+              const d = turf.distance(pt, snapped, { units: 'meters' });
+              if (d <= lineTolMeters) {
+                matched = true;
+                distMeters = Math.round(d);
+              }
+            } else if (gType === 'Point') {
+              const d = turf.distance(pt, feat, { units: 'meters' });
+              if (d <= lineTolMeters) {
+                matched = true;
+                distMeters = Math.round(d);
+              }
+            }
+          } catch (err) {}
+
+          if (matched) {
+            const p = feat.properties || {};
+            const title = titleFn(p);
+            const detail = detailFn(p, distMeters);
+            // Evita duplicati identici nello stesso punto
+            const key = badgeLabel + '|' + title + '|' + detail;
+            if (!foundItems.some(item => item.key === key)) {
+              foundItems.push({
+                key,
+                badgeLabel,
+                badgeBg,
+                badgeColor,
+                title,
+                detail
+              });
+            }
+          }
+        }
+      }
+
+      // 1. Vincolo Idrogeologico
+      checkDataset(
+        VINCOLO_DATASET,
+        'VINCOLO IDROGEOLOGICO',
+        '#dbeafe',
+        '#1d4ed8',
+        () => 'Area soggetta a Vincolo Idrogeologico',
+        () => 'R.D. 3267/1923 • Ricognizione Regione Lombardia'
+      );
+
+      // 2. Perimetro Bosco (Carta Forestale)
+      checkDataset(
+        BOSCO_DATASET,
+        'PERIMETRO BOSCO',
+        '#dcfce7',
+        '#15803d',
+        (p) => p.c || 'Superficie boscata',
+        () => 'Carta Forestale Regione Lombardia (Art. 142 lett. g)'
+      );
+
+      // 3. Aree di Notevole Interesse Pubblico (Art. 136)
+      checkDataset(
+        AREE_NOTEVOLE_INTERESSE_DATASET,
+        'NOTEVOLE INTERESSE PUBBLICO (ART. 136)',
+        '#f3e8ff',
+        '#7e22ce',
+        (p) => p.DESC_SITAP || 'Area di notevole interesse pubblico',
+        (p) => `Comuni: ${p.COMREG_PAE || '-'} • Decreto: ${p.DATA_DEC || '-'}`
+      );
+
+      // 4. Vincolo Paesaggistico di difficile cartografazione
+      checkDataset(
+        VINCOLO_DIFFICILE_CARTO_DATASET,
+        'VINCOLO PAESAGG. (DIFFICILE CARTOGRAF.)',
+        '#ffe4e6',
+        '#be123c',
+        (p) => p.DESC_SITAP || 'Area di interesse pubblico',
+        (p, d) => `Comuni: ${p.COMREG_PAE || '-'} • Decreto: ${p.DATA_DEC || '-'}${d !== null ? ' (a ' + d + 'm)' : ''}`,
+        true
+      );
+
+      // 5. Fasce di rispetto corsi d'acqua tutelati (150m)
+      checkDataset(
+        RISPETTO_CORSI_ACQUA_DATASET,
+        'FASCIA RISPETTO CORSI D\'ACQUA (150m)',
+        '#e0f2fe',
+        '#0369a1',
+        (p) => p.DEN_FI || 'Corso d\'acqua tutelato',
+        (p) => `Art. 142 lett. c) • ${p.TR_VINC || p.NOME_PRO || 'Tutela paesaggistica'}`
+      );
+
+      // 6. Fiumi, torrenti e corsi d'acqua pubblici
+      checkDataset(
+        FIUMI_TORRENTI_DATASET,
+        'FIUMI E TORRENTI TUTELATI',
+        '#dbeafe',
+        '#1e40af',
+        (p) => p.DEN_FI || 'Corso d\'acqua pubblico',
+        (p, d) => `Sfocia in: ${p.FOCE1 || '-'}${d !== null ? ' • Distanza: ' + d + 'm' : ''}`,
+        true
+      );
+
+      // 7. Alvei fluviali tutelati
+      checkDataset(
+        ALVEI_FLUVIALI_DATASET,
+        'ALVEI FLUVIALI TUTELATI',
+        '#cffafe',
+        '#0e7490',
+        (p) => p.DEN_FI || 'Alveo fluviale tutelato',
+        (p) => `Sfocia in: ${p.FOCE1 || '-'} ${p.TR_VINC ? '• ' + p.TR_VINC : ''}`
+      );
+
+      // 8. Territori contermini ai laghi (300m)
+      checkDataset(
+        TERRITORI_LAGHI_DATASET,
+        'TERRITORI CONTERMINI AI LAGHI (300m)',
+        '#ccfbf1',
+        '#0f766e',
+        (p) => p.NOME_LG || 'Territorio contermine al lago',
+        (p) => `Art. 142 lett. b) • Codice Lago: ${p.COD_LG || '-'}`
+      );
+
+      // 9. Terreni alpini e appenninici (>1600m)
+      checkDataset(
+        TERRENI_ALPINI_DATASET,
+        'TERRENI ALPINI (>1600m)',
+        '#fef3c7',
+        '#b45309',
+        (p) => p.DES_QUOTA || 'Terreni alpini sopra quota tutela',
+        () => 'Art. 142 lett. d) D.Lgs. 42/2004'
+      );
+
+      // 10. Eventuale tracciato VASP nel punto cliccato
+      checkDataset(
+        activeDataset,
+        'STRADA V.A.S.P.',
+        '#d1fae5',
+        '#065f46',
+        (p) => `${p.codice || p.codice_sivasp || ''} - ${p.nome || ''}`,
+        (p, d) => `${p.comune || ''} • ${p.classe || ''}${d !== null ? ' (a ' + d + 'm)' : ''}`,
+        true
+      );
+
+      const coordsHtml = `<div style="font-size:0.72rem; color:#64748b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">
+        <i class="fa-solid fa-location-dot" style="color:#0284c7;"></i> Coord: <strong>${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}</strong>
+      </div>`;
+
+      let bodyHtml = '';
+      if (foundItems.length === 0) {
+        bodyHtml = `<div style="font-size:0.85rem; color:#475569; padding:4px 0;">
+          Nessun vincolo territoriale, bosco o tracciato VASP rilevato in questo punto.
+        </div>`;
+      } else {
+        bodyHtml = `<div style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px;">` +
+          foundItems.map(item => `
+            <div style="border-left:3px solid ${item.badgeColor}; padding-left:8px;">
+              <span style="display:inline-block; background:${item.badgeBg}; color:${item.badgeColor}; font-size:0.66rem; font-weight:700; padding:1px 6px; border-radius:4px; margin-bottom:2px;">${item.badgeLabel}</span><br>
+              <strong style="font-size:0.86rem; color:#0f172a; line-height:1.2; display:block;">${item.title}</strong>
+              <span style="font-size:0.75rem; color:#64748b; line-height:1.25; display:block;">${item.detail}</span>
+            </div>
+          `).join('') +
+        `</div>`;
+      }
+
+      L.popup({ maxWidth: 310, className: 'vincoli-point-popup' })
+        .setLatLng(latlng)
+        .setContent(`<div style="font-family:'Inter',sans-serif; color:#0f172a;">${coordsHtml}${bodyHtml}</div>`)
+        .openOn(map);
     }
 
     // GESTIONE GPS
