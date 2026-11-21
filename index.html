@@ -655,6 +655,8 @@
     let accuracyCircle = null;
     let vaspLayerGroup = null;
     let capanniLayerGroup = null;
+    let vincoloIdroLayer = null;
+    let boscoLayer = null;
     let autoFollowGps = true;
 
 
@@ -808,8 +810,37 @@
         layers: [ctrLombardiaLayer]
       }).setView([45.88, 10.18], 14);
 
+      // Riquadro geografico limitato ai 6 comuni (Angolo Terme, Artogne, Darfo, Esine, Gianico, Pian Camuno)
+      const seiComuniBounds = L.latLngBounds(
+        [45.8000, 10.0850],
+        [45.9450, 10.2850]
+      );
+
       vaspLayerGroup = L.layerGroup().addTo(map);
       capanniLayerGroup = L.layerGroup().addTo(map);
+
+      // Layer WMS ufficiali Regione Lombardia (spenti all'avvio, caricati solo su richiesta con opacità 50% e limitati ai 6 comuni)
+      vincoloIdroLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/expo/services/gpt/Aree_vincolo_idrogeologico_2013/MapServer/WMSServer', {
+        layers: '0',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        opacity: 0.5,
+        bounds: seiComuniBounds,
+        maxZoom: 19,
+        attribution: 'Vincolo Idrogeologico Regione Lombardia'
+      });
+
+      boscoLayer = L.tileLayer.wms('https://www.cartografia.servizirl.it/arcgis2/services/agricoltura/carta_forestale/MapServer/WMSServer', {
+        layers: '0',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        opacity: 0.5,
+        bounds: seiComuniBounds,
+        maxZoom: 19,
+        attribution: 'Carta Forestale (Bosco) Regione Lombardia'
+      });
 
       // Controllo selezione sfondi (3 sfondi essenziali)
       const baseMaps = {
@@ -820,13 +851,15 @@
 
       const overlays = {
         "Tracciati VASP (139)": vaspLayerGroup,
-        "Appostamenti fissi caccia (188)": capanniLayerGroup
+        "Appostamenti fissi caccia (188)": capanniLayerGroup,
+        "Vincolo Idrogeologico": vincoloIdroLayer,
+        "Bosco": boscoLayer
       };
 
       const layerControl = L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(map);
 
-      // Chiude automaticamente il menu sfondi su smartphone dopo la scelta o toccando la mappa
-      map.on('baselayerchange click', () => {
+      // Chiude automaticamente il menu livelli su smartphone dopo la scelta o toccando la mappa
+      map.on('baselayerchange overlayadd overlayremove click', () => {
         const container = layerControl.getContainer();
         if (container) {
           container.classList.remove('leaflet-control-layers-expanded');
