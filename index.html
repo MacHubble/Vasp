@@ -1041,6 +1041,16 @@
         }
       });
 
+      // Layer WMS Catasto Agenzia delle Entrate (Particelle, Fogli, Fabbricati, Vestizioni - spento all'avvio)
+      const catastoWmsLayer = L.tileLayer.wms('https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php', {
+        layers: 'CP.CadastralParcel,CP.CadastralZoning,fabbricati,vestizioni',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        maxZoom: 20,
+        attribution: 'Catasto Agenzia delle Entrate'
+      });
+
       // Controllo selezione sfondi (3 sfondi essenziali)
       const baseMaps = {
         "CTR Lombardia (DBT 1:10.000)": ctrLombardiaLayer,
@@ -1051,6 +1061,7 @@
       const overlays = {
         "Tracciati VASP (139)": vaspLayerGroup,
         "Appostamenti fissi caccia (188)": capanniLayerGroup,
+        "Catasto (Agenzia Entrate WMS)": catastoWmsLayer,
         "Vincolo Idrogeologico": vincoloIdroLayer,
         "Bosco": boscoLayer,
         "Aree Notevole Interesse Pubblico": areeNotevoleInteresseLayer,
